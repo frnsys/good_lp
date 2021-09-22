@@ -486,6 +486,13 @@ impl Div<f64> for Variable {
     }
 }
 
+impl Div<f32> for Variable {
+    type Output = Expression;
+    fn div(self, rhs: f32) -> Self::Output {
+        self * (1. / rhs)
+    }
+}
+
 impl Div<i32> for Variable {
     type Output = Expression;
     fn div(self, rhs: i32) -> Self::Output {
