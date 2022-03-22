@@ -71,6 +71,26 @@ impl CoinCbcProblem {
     pub fn as_inner(&self) -> &Model {
         &self.model
     }
+
+    /// Get a mutable version of the inner Coin CBC model.
+    /// good_lp will crash (but should stay memory-safe) if you change the structure of the problem
+    /// itself using this method.
+    pub fn as_inner_mut(&mut self) -> &mut Model {
+        &mut self.model
+    }
+
+    /// Set an option in cbc. For the list of available options, start the cbc binary and type '?'
+    /// ```
+    /// use good_lp::*;
+    /// variables!{ vars: 0<=x<=1; 0<=y<=1; }
+    /// let mut model = vars.maximise(x + y).using(coin_cbc);
+    /// model.set_parameter("log", "1"); // Pass parameters directly to cbc
+    /// let result = model.with(constraint!(x + y <= 0.5)).solve();
+    /// assert_eq!(result.unwrap().value(x), 0.5);
+    /// ```
+    pub fn set_parameter(&mut self, key: &str, value: &str) {
+        self.model.set_parameter(key, value);
+    }
 }
 
 impl SolverModel for CoinCbcProblem {

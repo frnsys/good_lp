@@ -34,22 +34,20 @@ pub fn highs(to_solve: UnsolvedProblem) -> HighsProblem {
         },
     ) in to_solve.variables.iter_variables_with_def()
     {
-        if is_integer {
-            panic!("HiGHS does not support integer variables, but variable number {} is of type integer.", var.index());
-        }
         let &col_factor = to_solve
             .objective
             .linear
             .coefficients
             .get(&var)
             .unwrap_or(&0.);
-        let col = highs_problem.add_column(col_factor, min..max);
+        let col = highs_problem.add_column_with_integrality(col_factor, min..max, is_integer);
         columns.push(col);
     }
     HighsProblem {
         sense,
         highs_problem,
         columns,
+        verbose: false,
     }
 }
 
@@ -59,12 +57,18 @@ pub struct HighsProblem {
     sense: highs::Sense,
     highs_problem: highs::RowProblem,
     columns: Vec<highs::Col>,
+    verbose: bool,
 }
 
 impl HighsProblem {
     /// Get a highs model for this problem
     pub fn into_inner(self) -> highs::Model {
         self.highs_problem.optimise(self.sense)
+    }
+
+    /// Sets whether or not HiGHS should display verbose logging information to the console
+    pub fn set_verbose(&mut self, verbose: bool) {
+        self.verbose = verbose
     }
 }
 
@@ -73,7 +77,13 @@ impl SolverModel for HighsProblem {
     type Error = ResolutionError;
 
     fn solve(self) -> Result<Self::Solution, Self::Error> {
-        let model = self.into_inner();
+        let verbose = self.verbose;
+        let mut model = self.into_inner();
+        if verbose {
+            model.set_option(&b"output_flag"[..], true);
+            model.set_option(&b"log_to_console"[..], true);
+            model.set_option(&b"log_dev_level"[..], 2);
+        }
         let solved = model.solve();
         match solved.status() {
             HighsModelStatus::NotSet => Err(ResolutionError::Other("NotSet")),
@@ -83,12 +93,11 @@ impl SolverModel for HighsProblem {
             HighsModelStatus::SolveError => Err(ResolutionError::Other("SolveError")),
             HighsModelStatus::PostsolveError => Err(ResolutionError::Other("PostsolveError")),
             HighsModelStatus::ModelEmpty => Err(ResolutionError::Other("ModelEmpty")),
-            HighsModelStatus::PrimalInfeasible => Err(ResolutionError::Infeasible),
-            HighsModelStatus::PrimalUnbounded => Err(ResolutionError::Unbounded),
+            HighsModelStatus::Infeasible => Err(ResolutionError::Infeasible),
+            HighsModelStatus::Unbounded => Err(ResolutionError::Unbounded),
+            HighsModelStatus::UnboundedOrInfeasible => Err(ResolutionError::Infeasible),
             _ok_status => Ok(HighsSolution {
                 solution: solved.get_solution(),
-                dual_values: vec![],
-                acquired: false,
             }),
         }
     }
@@ -116,8 +125,6 @@ impl SolverModel for HighsProblem {
 #[derive(Debug)]
 pub struct HighsSolution {
     solution: highs::Solution,
-    dual_values: Vec<f64>,
-    acquired: bool,
 }
 
 impl HighsSolution {
